@@ -8,26 +8,54 @@ import (
 	"github.com/joho/godotenv"
 	"log"
 	"net/http"
-	"net/url" // Import the url package
+	"net/url"
 	"os"
 )
 
-// Response defines a simple response structure
 type Response struct {
 	Message string `json:"message"`
 }
 
-// LocationRequest defines the expected payload for POST /location
 type LocationRequest struct {
 	Latitude  float64 `json:"latitude"`
 	Longitude float64 `json:"longitude"`
 	UserID    int     `json:"userID"`
 }
 
-// Database connection variable
+// Config holds environment-specific configuration
+type Config struct {
+	AppEnv     string
+	DBUser     string
+	DBPassword string
+	DBHost     string
+	DBPort     string
+	DBName     string
+	ServerHost string
+	ServerPort string
+}
+
 var db *pgx.Conn
 
-// locationHandler handles POST /location
+func loadConfig() Config {
+	// Only load .env in non-production environments
+	if os.Getenv("APP_ENV") != "production" {
+		if err := godotenv.Load(); err != nil {
+			log.Println("Warning: .env file not found (skipping)")
+		}
+	}
+
+	return Config{
+		AppEnv:     os.Getenv("APP_ENV"),
+		DBUser:     os.Getenv("DB_USER"),
+		DBPassword: os.Getenv("DB_PASSWORD"),
+		DBHost:     os.Getenv("DB_HOST"),
+		DBPort:     os.Getenv("DB_PORT"),
+		DBName:     os.Getenv("DB_NAME"),
+		ServerHost: os.Getenv("SERVER_HOST"), // Can be set to 0.0.0.0 in prod
+		ServerPort: os.Getenv("SERVER_PORT"), // e.g., 8081
+	}
+}
+
 func locationHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -41,13 +69,11 @@ func locationHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if the user exists
 	if !userExists(loc.UserID) {
 		http.Error(w, "User does not exist", http.StatusBadRequest)
 		return
 	}
 
-	// Insert data into PostgreSQL database
 	err = saveLocationToDatabase(loc)
 	if err != nil {
 		http.Error(w, "Failed to save location", http.StatusInternalServerError)
@@ -57,18 +83,11 @@ func locationHandler(w http.ResponseWriter, r *http.Request) {
 
 	resp := Response{Message: "Location received and saved successfully"}
 	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(resp)
-	if err != nil {
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-	}
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
-// saveLocationToDatabase inserts location data into PostgreSQL
 func saveLocationToDatabase(loc LocationRequest) error {
-	// SQL query to insert the data
 	sql := `INSERT INTO public.locations (latitude, longitude, user_id) VALUES ($1, $2, $3)`
-
-	// Execute the insert query
 	_, err := db.Exec(context.Background(), sql, loc.Latitude, loc.Longitude, loc.UserID)
 	return err
 }
@@ -85,42 +104,22 @@ func userExists(userID int) bool {
 }
 
 func main() {
-	// Load environment variables from .env file
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatalf("Error loading .env file: %v", err)
-	}
+	// Load configuration
+	config := loadConfig()
 
-	// Get PostgreSQL credentials from environment variables
-	dbUser := os.Getenv("DB_USER")
-	dbPassword := os.Getenv("DB_PASSWORD")
-	dbHost := os.Getenv("DB_HOST")
-	dbPort := os.Getenv("DB_PORT")
-	dbName := os.Getenv("DB_NAME")
+	// Connect to PostgreSQL
+	encodedPassword := url.QueryEscape(config.DBPassword)
+	connStr := fmt.Sprintf("postgres://%s:%s@%s:%s/%s",
+		config.DBUser, encodedPassword, config.DBHost, config.DBPort, config.DBName)
 
-	// URL-encode the password to escape special characters
-	encodedPassword := url.QueryEscape(dbPassword)
+	log.Printf("Connecting to DB at %s (env: %s)", config.DBHost, config.AppEnv)
 
-	// Create the PostgreSQL connection string with the encoded password
-	fmt.Printf("Connecting with: postgres://%s:%s@%s:%s/%s\n", dbUser, encodedPassword, dbHost, dbPort, dbName)
-
-	connStr := fmt.Sprintf("postgres://%s:%s@%s:%s/%s", dbUser, encodedPassword, dbHost, dbPort, dbName)
-
-	// Set up PostgreSQL connection
+	var err error
 	db, err = pgx.Connect(context.Background(), connStr)
-
 	if err != nil {
-		log.Fatalf("Unable to connect to database: %v\n", err)
+		log.Fatalf("Unable to connect to database: %v", err)
 	}
 
-	// Handle POST request to /location
-	http.HandleFunc("/location", locationHandler)
-
-	host := "localhost"
-	port := 8081
-	log.Printf("Server running on %s:%d\n", host, port)
-
-	// Ensure the database connection is closed when the program ends
 	defer func(db *pgx.Conn, ctx context.Context) {
 		err := db.Close(ctx)
 		if err != nil {
@@ -129,8 +128,13 @@ func main() {
 		}
 	}(db, context.Background())
 
-	// Start the server
-	err = http.ListenAndServe(fmt.Sprintf("%s:%d", host, port), nil)
+	// Set up HTTP handler
+	http.HandleFunc("/location", locationHandler)
+
+	addr := fmt.Sprintf("%s:%s", config.ServerHost, config.ServerPort)
+	log.Printf("Server running on %s", addr)
+
+	err = http.ListenAndServe(addr, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
