@@ -12,6 +12,8 @@ import (
 	"os"
 )
 
+var version = "undefined"
+
 type Response struct {
 	Message string `json:"message"`
 }

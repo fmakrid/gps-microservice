@@ -1,4 +1,4 @@
-module gps-microservice
+module github.com/fmakrid/gps-microservice
 
 go 1.24
 
