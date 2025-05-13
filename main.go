@@ -38,10 +38,8 @@ var db *pgx.Conn
 
 func loadConfig() Config {
 	// Only load .env in non-production environments
-	if os.Getenv("APP_ENV") != "production" {
-		if err := godotenv.Load(); err != nil {
-			log.Println("Warning: .env file not found (skipping)")
-		}
+	if err := godotenv.Load(); err != nil {
+		log.Println("Warning: .env file not found (skipping)")
 	}
 
 	return Config{
