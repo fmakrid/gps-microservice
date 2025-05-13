@@ -14,10 +14,12 @@ import (
 
 var version = "undefined"
 
+// Response represents the response structure returned by the server.
 type Response struct {
 	Message string `json:"message"`
 }
 
+// LocationRequest represents a request containing a user's location information.
 type LocationRequest struct {
 	Latitude  float64 `json:"latitude"`
 	Longitude float64 `json:"longitude"`
