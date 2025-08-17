@@ -2,7 +2,6 @@ OUT := gps-microservice
 PKG := github.com/fmakrid/gps-microservice
 VERSION := $(shell git describe --always --long --dirty)
 PKG_LIST := $(shell go list ${PKG}/...)
-GO_FILES := $(shell find . -name "*.go")
 
 # Choose target architecture for the Pi
 # arm   -> 32-bit Raspberry Pi OS
@@ -15,15 +14,15 @@ OUT_NAME := ${OUT}-$(VERSION)-${GOARCH}
 
 all: build
 
-# Build Linux binary for Pi
+# Build Linux binary for Pi (cross-compile from Windows)
 build:
 	@echo "Cross-compiling for Linux (${GOARCH})"
-	@set GOOS=${GOOS} && set GOARCH=${GOARCH} && set CGO_ENABLED=0 && go build -v -o ${OUT_NAME} -ldflags="-X main.version=${VERSION}" ${PKG}
+	@cmd /C "set GOOS=${GOOS}&& set GOARCH=${GOARCH}&& set CGO_ENABLED=0&& go build -v -o ${OUT_NAME} -ldflags=\"-X main.version=${VERSION}\" ${PKG}"
 
 # Run tests
 test:
 	@echo "Running tests..."
-	@go test -short ${PKG_LIST}
+	@go test -v ${PKG_LIST}
 
 # Vet code
 vet:
@@ -37,6 +36,6 @@ lint:
 
 # Clean output binaries
 clean:
-	@del ${OUT_NAME} 2>nul
+	@cmd /C "if exist ${OUT_NAME} del ${OUT_NAME}"
 
 .PHONY: all build test vet lint clean
