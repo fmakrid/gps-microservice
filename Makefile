@@ -1,13 +1,18 @@
 OUT := gps-microservice
 PKG := github.com/fmakrid/gps-microservice
 VERSION := $(shell git describe --always --long --dirty)
-PKG_LIST := $(shell go list ${PKG}/... | findstr /V "\\vendor")
-GO_FILES := $(shell dir /s /b *.go | findstr /V "\\vendor")
+PKG_LIST := $(shell go list ${PKG}/...)
+GO_FILES := $(shell find . -name "*.go")
 
-all: run
+# Output binary name with version
+OUT_NAME := gps-microservice-$(VERSION)
 
-server:
-	powershell -Command "$$env:GOOS='linux'; $$env:GOARCH='amd64'; $$env:CGO_ENABLED='0'; go build -v -o ${OUT} -ldflags='-X main.version=${VERSION}' ${PKG}"
+all: build
+
+# Build for Ubuntu Linux (Linux amd64)
+build:
+	@echo "Building for Linux (Ubuntu)"
+	@GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -v -o ${OUT_NAME} -ldflags="-X main.version=${VERSION}" ${PKG}
 
 test:
 	@go test -short ${PKG_LIST}
@@ -15,17 +20,10 @@ test:
 vet:
 	@go vet ${PKG_LIST}
 
-# Lint target: run golint on all Go files in the package
 lint:
-	@golint ${PKG}/... || exit 1  # Use golint on the whole package
-
-static: vet lint
-	powershell -Command "$$env:GOOS='linux'; $$env:GOARCH='amd64'; $$env:CGO_ENABLED='0'; go build -v -o ${OUT}-${VERSION} -tags netgo -ldflags='-extldflags \"-static\" -w -s -X main.version=${VERSION}' ${PKG}"
-
-run: server
-	./${OUT}
+	@golint ${PKG}/... || exit 1
 
 clean:
-	-@del ${OUT} ${OUT}-* 2>nul
+	@rm -f ${OUT_NAME} ${OUT_NAME}-*
 
-.PHONY: run server static vet lint
+.PHONY: all build test vet lint clean
